@@ -39,7 +39,7 @@ export default function LoginPage() {
             }
 
             // ✅ ÉCOUTE LE CHANGEMENT D'AUTH ET REDIRIGE
-            const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
                 if (session?.user) {
                     setLoading(false);
                     subscription?.unsubscribe();
