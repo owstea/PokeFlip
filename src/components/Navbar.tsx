@@ -1,3 +1,4 @@
+// navbar.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -32,7 +33,7 @@ export default function Navbar() {
     checkAuth();
 
     // Écoute les changements d'auth
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setIsAuthenticated(true);
         setUserEmail(session.user.email || null);
