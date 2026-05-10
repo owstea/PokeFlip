@@ -19,9 +19,52 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+interface Item {
+  id: string
+  nom: string
+  quantite: number
+  prix_achat: number
+  user_id: string
+}
+
+interface Vente {
+  id: string
+  item_id: string
+  quantite_vendue: number
+  prix_vente: number
+  plateforme: string
+  date_vente: string
+  user_id: string
+}
+
+interface Stats {
+  totalAchats: number
+  totalVentes: number
+  totalInvesti: number
+  totalVendu: number
+  profit: number
+  quantiteTotalVendue: number
+  beneficeTotal: number
+  quantiteEnStock: number
+  valeurStock: number
+  totalInvestiAvecVentes: number
+  valeurVendue: number
+  tauxVente: number
+  profitMoyen: number
+  roi: number
+}
+
+interface ChartData {
+  ventesParPlateforme: Array<{ name: string; value: number }>
+  ventesParMois: Array<{ mois: string; ventes: number }>
+  profitParArticle: Array<{ nom: string; profit: number }>
+}
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+
 export default function Home() {
   const { user, loading } = useAuth()
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<Stats>({
     totalAchats: 0,
     totalVentes: 0,
     totalInvesti: 0,
@@ -38,18 +81,18 @@ export default function Home() {
     roi: 0,
   })
 
-  const [chartData, setChartData] = useState({
+  const [chartData, setChartData] = useState<ChartData>({
     ventesParPlateforme: [],
     ventesParMois: [],
     profitParArticle: [],
   })
 
   useEffect(() => {
-    if (loading || !user) return
+    if (loading || !user?.id) return
 
     async function loadStats() {
       try {
-        // ========== FETCH ITEMS (USER) ==========
+        // ========== FETCH ITEMS ==========
         const { data: achats, error: errorAchats } = await supabase
             .from('items')
             .select('*')
@@ -57,7 +100,7 @@ export default function Home() {
 
         if (errorAchats) throw errorAchats
 
-        // ========== FETCH VENTES (USER) ==========
+        // ========== FETCH VENTES ==========
         const { data: ventes, error: errorVentes } = await supabase
             .from('ventes')
             .select('*')
@@ -65,210 +108,192 @@ export default function Home() {
 
         if (errorVentes) throw errorVentes
 
-        // ========== CALCULS STOCK & INVESTISSEMENT ==========
+        // ========== CALCUL STATS ==========
+        const achatsArray = (achats || []) as Item[]
+        const ventesArray = (ventes || []) as Vente[]
+
         let quantiteEnStock = 0
         let valeurStock = 0
         let totalInvestiAvecVentes = 0
         let totalQuantiteAchetee = 0
-        let profitParArticleData = []
+        let totalQuantiteVendue = 0
+        let totalVenduMontant = 0
+        let profitTotal = 0
 
-        ;(achats || []).forEach(item => {
-          const quantiteVendue = (ventes || [])
-              .filter(v => v.item_id === item.id)
-              .reduce((sum, v) => sum + v.quantite_vendue, 0)
+        const profitParArticleMap: Record<string, number> = {}
+        const ventesParPlat: Record<string, number> = {}
+        const ventesParMoisMap: Record<string, number> = {}
+
+        // Parcourir les achats
+        achatsArray.forEach((item: Item) => {
+          const quantiteVendue = ventesArray
+              .filter((v: Vente) => v.item_id === item.id)
+              .reduce((sum: number, v: Vente) => sum + v.quantite_vendue, 0)
 
           const quantiteRestante = item.quantite - quantiteVendue
+          const investiItem = item.prix_achat * item.quantite
 
-          // Valeur en stock
+          totalQuantiteAchetee += item.quantite
           quantiteEnStock += quantiteRestante
           valeurStock += quantiteRestante * item.prix_achat
-
-          // Total investi (items achetés + items vendus)
-          totalInvestiAvecVentes += item.quantite * item.prix_achat
-          totalQuantiteAchetee += item.quantite
+          totalInvestiAvecVentes += investiItem
 
           // Profit par article
-          const ventesItem = (ventes || []).filter(v => v.item_id === item.id)
-          const profitArticle = ventesItem.reduce((sum, v) => sum + ((v.prix_vente - item.prix_achat) * v.quantite_vendue), 0)
+          const venteItem = ventesArray
+              .filter((v: Vente) => v.item_id === item.id)
+              .reduce((sum: number, v: Vente) => sum + v.prix_vente * v.quantite_vendue, 0)
 
-          if (ventesItem.length > 0) {
-            profitParArticleData.push({
-              nom: item.nom,
-              profit: profitArticle,
-            })
-          }
+          const profitItem = venteItem - item.prix_achat * quantiteVendue
+          profitParArticleMap[item.nom] = profitItem
+          profitTotal += profitItem
         })
 
-        // ========== CALCULS STATS ==========
-        const totalInvesti = (achats || []).reduce((sum, a) => sum + (a.prix_achat * a.quantite || 0), 0)
-        const totalVendu = (ventes || []).reduce((sum, v) => sum + (v.prix_vente * v.quantite_vendue || 0), 0)
-        const profit = totalVendu - totalInvesti
-        const quantiteTotalVendue = (ventes || []).reduce((sum, v) => sum + v.quantite_vendue, 0)
-        const tauxVente = totalQuantiteAchetee > 0 ? (quantiteTotalVendue / totalQuantiteAchetee) * 100 : 0
-        const profitMoyen = quantiteTotalVendue > 0 ? profit / quantiteTotalVendue : 0
-        const roi = totalInvesti > 0 ? (profit / totalInvesti) * 100 : 0
+        // Parcourir les ventes
+        ventesArray.forEach((vente: Vente) => {
+          totalQuantiteVendue += vente.quantite_vendue
+          totalVenduMontant += vente.prix_vente * vente.quantite_vendue
 
+          // Ventes par plateforme
+          ventesParPlat[vente.plateforme] =
+              (ventesParPlat[vente.plateforme] || 0) + vente.prix_vente * vente.quantite_vendue
+
+          // Ventes par mois
+          const date = new Date(vente.date_vente)
+          const moisKey = `${date.getMonth() + 1}/${date.getFullYear()}`
+          ventesParMoisMap[moisKey] =
+              (ventesParMoisMap[moisKey] || 0) + vente.prix_vente * vente.quantite_vendue
+        })
+
+        // ========== CONSTRUCTION CHART DATA ==========
+        const ventesParPlateformeData = Object.entries(ventesParPlat).map(
+            ([plateforme, montant]) => ({
+              name: plateforme || 'Autre',
+              value: montant,
+            })
+        )
+
+        const ventesParMoisData = Object.entries(ventesParMoisMap)
+            .sort()
+            .map(([mois, montant]) => ({
+              mois,
+              ventes: montant,
+            }))
+
+        const profitParArticleData = Object.entries(profitParArticleMap)
+            .map(([nom, profit]) => ({
+              nom,
+              profit,
+            }))
+            .sort((a, b) => b.profit - a.profit)
+            .slice(0, 10)
+
+        // ========== CALCUL TAUX & ROI ==========
+        const tauxVente = totalQuantiteAchetee > 0 ? (totalQuantiteVendue / totalQuantiteAchetee) * 100 : 0
+        const profitMoyen = totalQuantiteVendue > 0 ? profitTotal / totalQuantiteVendue : 0
+        const roi = totalInvestiAvecVentes > 0 ? (profitTotal / totalInvestiAvecVentes) * 100 : 0
+
+        // ========== SET STATS ==========
         setStats({
-          totalAchats: (achats || []).length,
-          totalVentes: (ventes || []).length,
-          totalInvesti,
-          totalVendu,
-          profit,
-          quantiteTotalVendue,
-          beneficeTotal: profit,
+          totalAchats: achatsArray.length,
+          totalVentes: ventesArray.length,
+          totalInvesti: totalInvestiAvecVentes,
+          totalVendu: totalVenduMontant,
+          profit: profitTotal,
+          quantiteTotalVendue: totalQuantiteVendue,
+          beneficeTotal: profitTotal,
           quantiteEnStock,
           valeurStock,
           totalInvestiAvecVentes,
-          valeurVendue: totalVendu,
+          valeurVendue: totalVenduMontant,
           tauxVente,
           profitMoyen,
           roi,
         })
 
-        // ========== VENTES PAR PLATEFORME ==========
-        const ventesParPlat = {}
-        ;(ventes || []).forEach(v => {
-          ventesParPlat[v.plateforme] = (ventesParPlat[v.plateforme] || 0) + v.prix_vente * v.quantite_vendue
-        })
-
-        const ventesParPlateforme = Object.entries(ventesParPlat).map(([plateforme, montant]) => ({
-          name: plateforme || 'Autre',
-          value: montant,
-        }))
-
-        // ========== VENTES PAR MOIS ==========
-        const ventesParMois = {}
-        ;(ventes || []).forEach(v => {
-          const mois = new Date(v.date_vente).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
-          ventesParMois[mois] = (ventesParMois[mois] || 0) + v.prix_vente * v.quantite_vendue
-        })
-
-        const ventesParMoisData = Object.entries(ventesParMois).map(([mois, montant]) => ({
-          mois,
-          ventes: montant,
-        }))
-
         setChartData({
-          ventesParPlateforme,
+          ventesParPlateforme: ventesParPlateformeData,
           ventesParMois: ventesParMoisData,
-          profitParArticle: profitParArticleData.sort((a, b) => b.profit - a.profit).slice(0, 10),
+          profitParArticle: profitParArticleData,
         })
       } catch (error) {
-        console.error('Erreur:', error)
+        console.error('Erreur lors du chargement des stats:', error)
       }
     }
 
     loadStats()
-  }, [user, loading])
+  }, [user?.id, loading])
 
   if (loading) {
-    return (
-        <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-gray-900 to-gray-800">
-          <p className="text-white text-xl">⏳ Chargement...</p>
-        </div>
-    )
+    return <div className="flex items-center justify-center h-screen"><p>Chargement...</p></div>
   }
 
-  if (!user) {
-    return (
-        <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-gray-900 to-gray-800">
-          <p className="text-white text-xl">Veuillez vous connecter</p>
-        </div>
-    )
+  if (!user?.id) {
+    return <div className="flex items-center justify-center h-screen"><p>Vous devez être connecté</p></div>
   }
-
-  const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4']
 
   return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 p-6">
+      <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-7xl mx-auto">
-          {/* ========== HEADER ========== */}
-          <div className="mb-12">
-            <h1 className="text-4xl font-bold text-white mb-2">📊 Tableau de Bord</h1>
-            <p className="text-gray-400">Bienvenue, {user.email} 👋</p>
+          {/* HEADER */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">📊 Tableau de Bord</h1>
+            <p className="text-gray-600">Bienvenue {user?.email}</p>
           </div>
 
-          {/* ========== STATS CARDS COMPACTES ========== */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 mb-8">
-            <div className="bg-white p-4 rounded-lg shadow-lg hover:shadow-xl transition">
-              <h3 className="text-gray-600 text-xs font-bold mb-1">📦 Items</h3>
-              <p className="text-2xl font-bold text-blue-600">{stats.totalAchats}</p>
+          {/* STATS CARDS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {/* Card 1: Total Investi */}
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-lg shadow-lg">
+              <p className="text-sm font-semibold opacity-90">💰 Total Investi</p>
+              <p className="text-2xl font-bold mt-2">{stats.totalInvesti.toFixed(2)}€</p>
+              <p className="text-xs mt-2 opacity-75">{stats.totalAchats} articles achetés</p>
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow-lg hover:shadow-xl transition">
-              <h3 className="text-gray-600 text-xs font-bold mb-1">💰 Vendus</h3>
-              <p className="text-2xl font-bold text-purple-600">{stats.quantiteTotalVendue}</p>
+            {/* Card 2: Total Vendu */}
+            <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-6 rounded-lg shadow-lg">
+              <p className="text-sm font-semibold opacity-90">💵 Total Vendu</p>
+              <p className="text-2xl font-bold mt-2">{stats.totalVendu.toFixed(2)}€</p>
+              <p className="text-xs mt-2 opacity-75">{stats.totalVentes} ventes effectuées</p>
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow-lg hover:shadow-xl transition border-l-4 border-orange-500">
-              <h3 className="text-gray-600 text-xs font-bold mb-1">💵 Investi</h3>
-              <p className="text-xl font-bold text-orange-600">{stats.totalInvestiAvecVentes.toFixed(2)}€</p>
+            {/* Card 3: Profit */}
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-lg shadow-lg">
+              <p className="text-sm font-semibold opacity-90">🎯 Profit Total</p>
+              <p className="text-2xl font-bold mt-2">{stats.profit.toFixed(2)}€</p>
+              <p className="text-xs mt-2 opacity-75">ROI: {stats.roi.toFixed(2)}%</p>
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow-lg hover:shadow-xl transition border-l-4 border-cyan-500">
-              <h3 className="text-gray-600 text-xs font-bold mb-1">📦 En Stock</h3>
-              <p className="text-xl font-bold text-cyan-600">{stats.valeurStock.toFixed(2)}€</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-lg shadow-lg hover:shadow-xl transition">
-              <h3 className="text-gray-600 text-xs font-bold mb-1">💸 Vendu</h3>
-              <p className="text-xl font-bold text-green-600">{stats.valeurVendue.toFixed(2)}€</p>
-            </div>
-
-            <div className={`p-4 rounded-lg shadow-lg hover:shadow-xl transition border-l-4 ${stats.profit >= 0 ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
-              <h3 className="text-gray-600 text-xs font-bold mb-1">🎉 Bénéfice</h3>
-              <p className={`text-xl font-bold ${stats.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {stats.profit >= 0 ? '+' : ''}{stats.profit.toFixed(2)}€
-              </p>
+            {/* Card 4: Stock */}
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-6 rounded-lg shadow-lg">
+              <p className="text-sm font-semibold opacity-90">📦 Stock Actuel</p>
+              <p className="text-2xl font-bold mt-2">{stats.quantiteEnStock}</p>
+              <p className="text-xs mt-2 opacity-75">Valeur: {stats.valeurStock.toFixed(2)}€</p>
             </div>
           </div>
 
-          {/* ========== RÉSUMÉ INVESTISSEMENT & PERFORMANCE ========== */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Résumé Investissement */}
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
-              <h3 className="text-white text-lg font-bold mb-4">💼 Résumé Investissement</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Investissement total :</span>
-                  <span className="text-orange-400 font-bold text-lg">{stats.totalInvestiAvecVentes.toFixed(2)}€</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Valeur en stock :</span>
-                  <span className="text-cyan-400 font-bold text-lg">{stats.valeurStock.toFixed(2)}€</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Valeur vendue :</span>
-                  <span className="text-green-400 font-bold text-lg">{stats.valeurVendue.toFixed(2)}€</span>
-                </div>
-              </div>
+          {/* KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
+              <p className="text-sm text-gray-600 font-semibold">📈 Taux de Vente</p>
+              <p className="text-3xl font-bold text-blue-600 mt-2">{stats.tauxVente.toFixed(1)}%</p>
             </div>
 
-            {/* Performance */}
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg border-l-4 border-green-500">
-              <h3 className="text-white text-lg font-bold mb-4">📈 Performance</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Taux de vente :</span>
-                  <span className="text-blue-400 font-bold text-lg">{stats.tauxVente.toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Profit moyen :</span>
-                  <span className="text-purple-400 font-bold text-lg">{stats.profitMoyen.toFixed(2)}€</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">ROI :</span>
-                  <span className="text-yellow-400 font-bold text-lg">{stats.roi.toFixed(1)}%</span>
-                </div>
-              </div>
+            <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-green-500">
+              <p className="text-sm text-gray-600 font-semibold">💎 Profit Moyen/Unité</p>
+              <p className="text-3xl font-bold text-green-600 mt-2">{stats.profitMoyen.toFixed(2)}€</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-purple-500">
+              <p className="text-sm text-gray-600 font-semibold">🚀 Quantité Vendue</p>
+              <p className="text-3xl font-bold text-purple-600 mt-2">{stats.quantiteTotalVendue}</p>
             </div>
           </div>
 
-          {/* ========== CHARTS ========== */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* GRAPH 1: Ventes par plateforme */}
+          {/* CHARTS */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            {/* GRAPH 1: Ventes par Plateforme */}
             <div className="bg-white p-6 rounded-lg shadow-lg">
-              <h3 className="text-xl font-bold mb-4 text-gray-800">🌐 Ventes par Plateforme</h3>
+              <h3 className="text-xl font-bold mb-4 text-gray-800">🛒 Ventes par Plateforme</h3>
               {chartData.ventesParPlateforme.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
@@ -277,8 +302,8 @@ export default function Home() {
                           cx="50%"
                           cy="50%"
                           labelLine={false}
-                          label={({ name, value }) => `${name}: ${value.toFixed(0)}€`}
-                          outerRadius={100}
+                          label={({ name, value }) => `${name}: ${typeof value === 'number' ? value.toFixed(2) : 0}€`}
+                          outerRadius={80}
                           fill="#8884d8"
                           dataKey="value"
                       >
@@ -286,7 +311,10 @@ export default function Home() {
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => `${value.toFixed(2)}€`} />
+                      <Tooltip formatter={(value) => {
+                        const numValue = typeof value === 'number' ? value : 0
+                        return `${numValue.toFixed(2)}€`
+                      }} />
                     </PieChart>
                   </ResponsiveContainer>
               ) : (
@@ -294,7 +322,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* GRAPH 2: Ventes par mois */}
+            {/* GRAPH 2: Ventes par Mois */}
             <div className="bg-white p-6 rounded-lg shadow-lg">
               <h3 className="text-xl font-bold mb-4 text-gray-800">📅 Ventes par Mois</h3>
               {chartData.ventesParMois.length > 0 ? (
@@ -303,7 +331,10 @@ export default function Home() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="mois" />
                       <YAxis />
-                      <Tooltip formatter={(value) => `${value.toFixed(2)}€`} />
+                      <Tooltip formatter={(value) => {
+                        const numValue = typeof value === 'number' ? value : 0
+                        return `${numValue.toFixed(2)}€`
+                      }} />
                       <Legend />
                       <Line type="monotone" dataKey="ventes" stroke="#3b82f6" name="Ventes (€)" />
                     </LineChart>
@@ -323,7 +354,10 @@ export default function Home() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis dataKey="nom" type="category" width={150} />
-                    <Tooltip formatter={(value) => `${value.toFixed(2)}€`} />
+                    <Tooltip formatter={(value) => {
+                      const numValue = typeof value === 'number' ? value : 0
+                      return `${numValue.toFixed(2)}€`
+                    }} />
                     <Legend />
                     <Bar dataKey="profit" fill="#10b981" name="Profit (€)" />
                   </BarChart>
