@@ -19,8 +19,14 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+interface User {
+  id: string
+  email?: string
+}
+
 export default function Home() {
-  const { user, loading } = useAuth()
+  const { user: authUser, loading } = useAuth()
+  const [user, setUser] = useState<User | null>(null)
   const [stats, setStats] = useState({
     totalAchats: 0,
     totalVentes: 0,
@@ -39,21 +45,39 @@ export default function Home() {
   })
 
   const [chartData, setChartData] = useState({
-    ventesParPlateforme: [],
-    ventesParMois: [],
-    profitParArticle: [],
+    ventesParPlateforme: [] as Array<{ name: string; value: number }>,
+    ventesParMois: [] as Array<{ mois: string; ventes: number }>,
+    profitParArticle: [] as Array<{ nom: string; profit: number }>,
   })
 
+  const [userEmail, setUserEmail] = useState<string>('')
+
   useEffect(() => {
-    if (loading || !user) return
+    if (loading) return
+
+    if (authUser) {
+      const typedUser = authUser as User
+      setUser(typedUser)
+      setUserEmail(typedUser.email || '')
+    } else {
+      setUser(null)
+      setUserEmail('')
+    }
+  }, [authUser, loading])
+
+  useEffect(() => {
+    if (!user?.id) return
 
     async function loadStats() {
+      const currentUser = user
+      if (!currentUser?.id) return
+
       try {
         // ========== FETCH ITEMS (USER) ==========
         const { data: achats, error: errorAchats } = await supabase
             .from('items')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('user_id', currentUser.id)
 
         if (errorAchats) throw errorAchats
 
@@ -61,7 +85,7 @@ export default function Home() {
         const { data: ventes, error: errorVentes } = await supabase
             .from('ventes')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('user_id', currentUser.id)
 
         if (errorVentes) throw errorVentes
 
@@ -70,40 +94,40 @@ export default function Home() {
         let valeurStock = 0
         let totalInvestiAvecVentes = 0
         let totalQuantiteAchetee = 0
-        let profitParArticleData = []
+        const profitParArticleData: Array<{ nom: string; profit: number }> = []
 
-        ;(achats || []).forEach(item => {
+        ;(achats || []).forEach((item: any) => {
           const quantiteVendue = (ventes || [])
-              .filter(v => v.item_id === item.id)
-              .reduce((sum, v) => sum + v.quantite_vendue, 0)
+              .filter((v: any) => v.item_id === item.id)
+              .reduce((sum: number, v: any) => sum + (v.quantite_vendue || 0), 0)
 
-          const quantiteRestante = item.quantite - quantiteVendue
+          const quantiteRestante = (item.quantite || 0) - quantiteVendue
 
           // Valeur en stock
           quantiteEnStock += quantiteRestante
-          valeurStock += quantiteRestante * item.prix_achat
+          valeurStock += quantiteRestante * (item.prix_achat || 0)
 
           // Total investi (items achetés + items vendus)
-          totalInvestiAvecVentes += item.quantite * item.prix_achat
-          totalQuantiteAchetee += item.quantite
+          totalInvestiAvecVentes += (item.quantite || 0) * (item.prix_achat || 0)
+          totalQuantiteAchetee += item.quantite || 0
 
           // Profit par article
-          const ventesItem = (ventes || []).filter(v => v.item_id === item.id)
-          const profitArticle = ventesItem.reduce((sum, v) => sum + ((v.prix_vente - item.prix_achat) * v.quantite_vendue), 0)
+          const ventesItem = (ventes || []).filter((v: any) => v.item_id === item.id)
+          const profitArticle = ventesItem.reduce((sum: number, v: any) => sum + (((v.prix_vente || 0) - (item.prix_achat || 0)) * (v.quantite_vendue || 0)), 0)
 
           if (ventesItem.length > 0) {
             profitParArticleData.push({
-              nom: item.nom,
+              nom: item.nom || 'Sans nom',
               profit: profitArticle,
             })
           }
         })
 
         // ========== CALCULS STATS ==========
-        const totalInvesti = (achats || []).reduce((sum, a) => sum + (a.prix_achat * a.quantite || 0), 0)
-        const totalVendu = (ventes || []).reduce((sum, v) => sum + (v.prix_vente * v.quantite_vendue || 0), 0)
+        const totalInvesti = (achats || []).reduce((sum: number, a: any) => sum + ((a.prix_achat || 0) * (a.quantite || 0)), 0)
+        const totalVendu = (ventes || []).reduce((sum: number, v: any) => sum + ((v.prix_vente || 0) * (v.quantite_vendue || 0)), 0)
         const profit = totalVendu - totalInvesti
-        const quantiteTotalVendue = (ventes || []).reduce((sum, v) => sum + v.quantite_vendue, 0)
+        const quantiteTotalVendue = (ventes || []).reduce((sum: number, v: any) => sum + (v.quantite_vendue || 0), 0)
         const tauxVente = totalQuantiteAchetee > 0 ? (quantiteTotalVendue / totalQuantiteAchetee) * 100 : 0
         const profitMoyen = quantiteTotalVendue > 0 ? profit / quantiteTotalVendue : 0
         const roi = totalInvesti > 0 ? (profit / totalInvesti) * 100 : 0
@@ -126,26 +150,27 @@ export default function Home() {
         })
 
         // ========== VENTES PAR PLATEFORME ==========
-        const ventesParPlat = {}
-        ;(ventes || []).forEach(v => {
-          ventesParPlat[v.plateforme] = (ventesParPlat[v.plateforme] || 0) + v.prix_vente * v.quantite_vendue
+        const ventesParPlat: { [key: string]: number } = {}
+        ;(ventes || []).forEach((v: any) => {
+          const plateforme = v.plateforme || 'Autre'
+          ventesParPlat[plateforme] = (ventesParPlat[plateforme] || 0) + ((v.prix_vente || 0) * (v.quantite_vendue || 0))
         })
 
-        const ventesParPlateforme = Object.entries(ventesParPlat).map(([plateforme, montant]) => ({
+        const ventesParPlateforme: Array<{ name: string; value: number }> = Object.entries(ventesParPlat).map(([plateforme, montant]) => ({
           name: plateforme || 'Autre',
-          value: montant,
+          value: typeof montant === 'number' ? montant : 0,
         }))
 
         // ========== VENTES PAR MOIS ==========
-        const ventesParMois = {}
-        ;(ventes || []).forEach(v => {
-          const mois = new Date(v.date_vente).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
-          ventesParMois[mois] = (ventesParMois[mois] || 0) + v.prix_vente * v.quantite_vendue
+        const ventesParMois: { [key: string]: number } = {}
+        ;(ventes || []).forEach((v: any) => {
+          const mois = new Date(v.date_vente || new Date()).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
+          ventesParMois[mois] = (ventesParMois[mois] || 0) + ((v.prix_vente || 0) * (v.quantite_vendue || 0))
         })
 
-        const ventesParMoisData = Object.entries(ventesParMois).map(([mois, montant]) => ({
+        const ventesParMoisData: Array<{ mois: string; ventes: number }> = Object.entries(ventesParMois).map(([mois, montant]) => ({
           mois,
-          ventes: montant,
+          ventes: typeof montant === 'number' ? montant : 0,
         }))
 
         setChartData({
@@ -159,7 +184,7 @@ export default function Home() {
     }
 
     loadStats()
-  }, [user, loading])
+  }, [user])
 
   if (loading) {
     return (
@@ -185,7 +210,7 @@ export default function Home() {
           {/* ========== HEADER ========== */}
           <div className="mb-12">
             <h1 className="text-4xl font-bold text-white mb-2">📊 Tableau de Bord</h1>
-            <p className="text-gray-400">Bienvenue, {user.email} 👋</p>
+            <p className="text-gray-400">Bienvenue, {userEmail || 'Utilisateur'} 👋</p>
           </div>
 
           {/* ========== STATS CARDS COMPACTES ========== */}
@@ -277,16 +302,16 @@ export default function Home() {
                           cx="50%"
                           cy="50%"
                           labelLine={false}
-                          label={({ name, value }) => `${name}: ${value.toFixed(0)}€`}
+                          label={({ name, value }: any) => `${name}: ${(value || 0).toFixed(0)}€`}
                           outerRadius={100}
                           fill="#8884d8"
                           dataKey="value"
                       >
-                        {chartData.ventesParPlateforme.map((entry, index) => (
+                        {chartData.ventesParPlateforme.map((_entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => `${value.toFixed(2)}€`} />
+                      <Tooltip formatter={(value: any) => `${(value || 0).toFixed(2)}€`} />
                     </PieChart>
                   </ResponsiveContainer>
               ) : (
@@ -303,7 +328,7 @@ export default function Home() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="mois" />
                       <YAxis />
-                      <Tooltip formatter={(value) => `${value.toFixed(2)}€`} />
+                      <Tooltip formatter={(value: any) => `${(value || 0).toFixed(2)}€`} />
                       <Legend />
                       <Line type="monotone" dataKey="ventes" stroke="#3b82f6" name="Ventes (€)" />
                     </LineChart>
@@ -323,7 +348,7 @@ export default function Home() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis dataKey="nom" type="category" width={150} />
-                    <Tooltip formatter={(value) => `${value.toFixed(2)}€`} />
+                    <Tooltip formatter={(value: any) => `${(value || 0).toFixed(2)}€`} />
                     <Legend />
                     <Bar dataKey="profit" fill="#10b981" name="Profit (€)" />
                   </BarChart>
