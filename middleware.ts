@@ -30,17 +30,19 @@ export async function middleware(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser();
 
+    console.log('Cookies disponibles:', request.cookies.getAll());
     console.log('User in middleware:', user);
 
-    const protectedRoutes = ['/items', '/items/add', '/dashboard'];
-    const isProtectedRoute = protectedRoutes.some((route) =>
-        request.nextUrl.pathname.startsWith(route)
-    );
+    // ⭐ TEMPORAIRE : On désactive la protection
+    // const protectedRoutes = ['/items', '/items/add', '/dashboard'];
+    // const isProtectedRoute = protectedRoutes.some((route) =>
+    //     request.nextUrl.pathname.startsWith(route)
+    // );
 
-    if (!user && isProtectedRoute) {
-        console.log('Redirecting to login - no user');
-        return NextResponse.redirect(new URL('/auth/login', request.url));
-    }
+    // if (!user && isProtectedRoute) {
+    //     console.log('Redirecting to login - no user');
+    //     return NextResponse.redirect(new URL('/auth/login', request.url));
+    // }
 
     if (user && request.nextUrl.pathname.startsWith('/auth/login')) {
         return NextResponse.redirect(new URL('/', request.url));
