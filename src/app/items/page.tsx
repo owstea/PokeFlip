@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Item, Vente } from '@/lib/types';
-import Link from 'next/link';
-import { Plus, Edit2, Trash2, ShoppingBag, TrendingUp } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 type Tab = 'items' | 'ventes';
 type SortBy = 'nom' | 'prix' | 'quantite' | 'date';
@@ -14,7 +13,6 @@ type SortOrder = 'asc' | 'desc';
 export default function ItemsPage() {
     // ========== STATES ==========
     const router = useRouter();
-    const searchParams = useSearchParams();
     const [user, setUser] = useState<any>(null);
     const [items, setItems] = useState<Item[]>([]);
     const [ventes, setVentes] = useState<Vente[]>([]);
@@ -25,9 +23,11 @@ export default function ItemsPage() {
     // ========== MODAL STATES ==========
     const [showVenteModal, setShowVenteModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
-    const [showAddItemModal, setShowAddItemModal] = useState(false);// ========== ADD ITEM STATES ==========
+    const [showAddItemModal, setShowAddItemModal] = useState(false);
+
+    // ========== ADD ITEM STATES ==========
     const [newItemName, setNewItemName] = useState('');
-    const [newItemCategory, setNewItemCategory] = useState<'cartes' | 'display' | 'coffret' | 'etb' | 'upc' | 'accessoire' | 'autre'>('cartes');
+    const [newItemCategory, setNewItemCategory] = useState<'pokebox' | 'etb' | 'booster' | 'sleeve' | 'tapis' | 'autre'>('pokebox');
     const [newItemPrice, setNewItemPrice] = useState('');
     const [newItemQuantity, setNewItemQuantity] = useState('1');
 
@@ -35,18 +35,12 @@ export default function ItemsPage() {
     const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
     const [prixVente, setPrixVente] = useState('');
     const [quantiteVendue, setQuantiteVendue] = useState('1');
-    const [plateforme, setPlateforme] = useState('ebay');
-    const [hasShipping, setHasShipping] = useState(false);
-    const [prenom, setPrenom] = useState('');
-    const [nom, setNom] = useState('');
-    const [adresse, setAdresse] = useState('');
-    const [numSuivi, setNumSuivi] = useState('');
-    const [transporteur, setTransporteur] = useState<'mondial-relais' | 'chronopost' | 'colissimo'>('chronopost');
+    const [plateforme, setPlateforme] = useState<'ebay' | 'amazon' | 'vinted' | 'autre'>('ebay');
 
     // ========== EDIT ITEM STATES ==========
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [editName, setEditName] = useState('');
-    const [editCategory, setEditCategory] = useState<'cartes' | 'display' | 'coffret' | 'etb' | 'upc' | 'accessoire' | 'autre'>('cartes');
+    const [editCategory, setEditCategory] = useState<'pokebox' | 'etb' | 'booster' | 'sleeve' | 'tapis' | 'autre'>('pokebox');
     const [editPrice, setEditPrice] = useState('');
     const [editQuantity, setEditQuantity] = useState('');
 
@@ -59,9 +53,9 @@ export default function ItemsPage() {
     // ========== VENTES FILTER STATES ==========
     const [searchTermVentes, setSearchTermVentes] = useState('');
     const [selectedPlatform, setSelectedPlatform] = useState('all');
-    const [sortByVentes, setSortByVentes] = useState('date');
     const [sortOrderVentes, setSortOrderVentes] = useState<SortOrder>('desc');
 
+    // ========== INITIALIZE DATA ==========
     useEffect(() => {
         const initializeData = async () => {
             try {
@@ -76,7 +70,7 @@ export default function ItemsPage() {
                 await fetchItems(authUser.id);
                 await fetchVentes(authUser.id);
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Erreur initialization:', error);
             } finally {
                 setLoading(false);
             }
@@ -99,12 +93,14 @@ export default function ItemsPage() {
             const mappedItems = (data || []).map((dbItem: any) => ({
                 id: dbItem.id,
                 user_id: dbItem.user_id,
-                name: dbItem.nom || '',
+                name: dbItem.nom || '', // ✅ Change dbItem.name en dbItem.nom
                 category: dbItem.categorie || 'autre',
                 price: Number(dbItem.prix_achat) || 0,
                 quantity: Number(dbItem.quantite) || 0,
                 created_at: dbItem.created_at,
-            }));
+                image_url: dbItem.image_url,
+                description: dbItem.description,
+            })) as Item[];
 
             setItems(mappedItems);
             calculateTotalValue(mappedItems);
@@ -142,49 +138,39 @@ export default function ItemsPage() {
 
     // ========== ADD ITEM ==========
     const handleAddItem = async () => {
-        if (!newItemName || !newItemPrice || !user) {
+        if (!newItemName || !newItemPrice || !newItemQuantity) {
             alert('Veuillez remplir tous les champs');
             return;
         }
 
+        if (!user) {
+            alert('Utilisateur non authentifié');
+            return;
+        }
+
         try {
-            const { data, error } = await supabase
+            const { error } = await supabase
                 .from('items')
                 .insert([
                     {
                         user_id: user.id,
-                        nom: newItemName,
-                        categorie: newItemCategory,
-                        prix_achat: parseFloat(newItemPrice),
-                        quantite: parseInt(newItemQuantity),
+                        name: newItemName,
+                        category: newItemCategory,
+                        price: parseFloat(newItemPrice),
+                        quantity: parseInt(newItemQuantity),
                         created_at: new Date().toISOString(),
                     }
-                ])
-                .select();
+                ]);
 
             if (error) throw error;
 
-            if (data) {
-                const newItems = [
-                    {
-                        id: data[0].id,
-                        user_id: data[0].user_id,
-                        name: data[0].nom,
-                        category: data[0].categorie,
-                        price: data[0].prix_achat,
-                        quantity: data[0].quantite,
-                        created_at: data[0].created_at,
-                    },
-                    ...items,
-                ];
-                setItems(newItems);
-                calculateTotalValue(newItems);
-                setNewItemName('');
-                setNewItemPrice('');
-                setNewItemQuantity('1');
-                setNewItemCategory('cartes');
-                setShowAddItemModal(false);
-            }
+            await fetchItems(user.id);
+            setNewItemName('');
+            setNewItemPrice('');
+            setNewItemQuantity('1');
+            setNewItemCategory('pokebox');
+            setShowAddItemModal(false);
+            alert('Item ajouté avec succès !');
         } catch (error) {
             console.error('Erreur:', error);
             alert('Erreur lors de l\'ajout');
@@ -203,34 +189,41 @@ export default function ItemsPage() {
 
             if (error) throw error;
 
-            const updatedItems = items.filter(item => item.id !== itemId);
-            setItems(updatedItems);
-            calculateTotalValue(updatedItems);
+            await fetchItems(user.id);
+            alert('Article supprimé avec succès !');
         } catch (error) {
             console.error('Erreur:', error);
             alert('Erreur lors de la suppression');
         }
     };
 
-    // ========== OPEN VENTE MODAL ==========
-    const openVenteModal = (itemId: string) => {
-        setSelectedItemId(itemId);
-        setPrixVente('');
-        setQuantiteVendue('1');
-        setPlateforme('ebay');
-        setHasShipping(false);
-        setPrenom('');
-        setNom('');
-        setAdresse('');
-        setNumSuivi('');
-        setTransporteur('chronopost');
-        setShowVenteModal(true);
-    };
+    // ========== EDIT ITEM ==========
+    const handleEditItem = async () => {
+        if (!editingItem || !editName || !editPrice) {
+            alert('Veuillez remplir tous les champs');
+            return;
+        }
 
-    // ========== CLOSE VENTE MODAL ==========
-    const closeVenteModal = () => {
-        setShowVenteModal(false);
-        setSelectedItemId(null);
+        try {
+            const { error } = await supabase
+                .from('items')
+                .update({
+                    name: editName,
+                    category: editCategory,
+                    price: parseFloat(editPrice),
+                    quantity: parseInt(editQuantity),
+                })
+                .eq('id', editingItem.id);
+
+            if (error) throw error;
+
+            await fetchItems(user.id);
+            closeEditModal();
+            alert('Article modifié avec succès !');
+        } catch (error) {
+            console.error('Erreur:', error);
+            alert('Erreur lors de la modification');
+        }
     };
 
     // ========== ADD VENTE ==========
@@ -240,72 +233,60 @@ export default function ItemsPage() {
             return;
         }
 
-        if (hasShipping && (!prenom || !nom || !adresse || !numSuivi)) {
-            alert('Veuillez remplir tous les champs de livraison');
-            return;
-        }
-
         const item = items.find(i => i.id === selectedItemId);
         if (!item) return;
 
         try {
-            const { data, error } = await supabase
+            const { error } = await supabase
                 .from('ventes')
                 .insert([
                     {
                         user_id: user.id,
                         item_id: selectedItemId,
-                        item_nom: item.name,
+                        item_name: item.name,
+                        prix_achat: item.price,
                         prix_vente: parseFloat(prixVente),
                         quantite_vendue: parseInt(quantiteVendue),
                         plateforme: plateforme,
                         date_vente: new Date().toISOString(),
-                        has_shipping: hasShipping,
-                        prenom: hasShipping ? prenom : null,
-                        nom: hasShipping ? nom : null,
-                        adresse: hasShipping ? adresse : null,
-                        num_suivi: hasShipping ? numSuivi : null,
-                        transporteur: hasShipping ? transporteur : null,
                         created_at: new Date().toISOString(),
                     }
-                ])
-                .select();
+                ]);
 
             if (error) throw error;
 
-            if (data) {
-                setVentes([...data, ...ventes]);
-
-                // Mettre à jour la quantité de l'article
-                const quantityToSubtract = parseInt(quantiteVendue);
-                const updatedItems = items.map(item =>
-                    item.id === selectedItemId
-                        ? { ...item, quantity: Math.max(0, item.quantity - quantityToSubtract) }
-                        : item
-                );
-
-                setItems(updatedItems);
-                calculateTotalValue(updatedItems);
-
-                // Mettre à jour en base de données
-                await supabase
-                    .from('items')
-                    .update({ quantite: updatedItems.find(i => i.id === selectedItemId)?.quantity || 0 })
-                    .eq('id', selectedItemId);
-            }
-
+            await fetchVentes(user.id);
             closeVenteModal();
+            alert('Vente enregistrée avec succès !');
         } catch (error) {
             console.error('Erreur:', error);
-            alert('Erreur lors de l\'ajout de la vente');
+            alert('Erreur lors de l\'enregistrement de la vente');
         }
+    };
+
+    // ========== OPEN VENTE MODAL ==========
+    const openVenteModal = (itemId: string) => {
+        setSelectedItemId(itemId);
+        setPrixVente('');
+        setQuantiteVendue('1');
+        setPlateforme('ebay');
+        setShowVenteModal(true);
+    };
+
+    // ========== CLOSE VENTE MODAL ==========
+    const closeVenteModal = () => {
+        setShowVenteModal(false);
+        setSelectedItemId(null);
+        setPrixVente('');
+        setQuantiteVendue('1');
+        setPlateforme('ebay');
     };
 
     // ========== OPEN EDIT MODAL ==========
     const openEditModal = (item: Item) => {
         setEditingItem(item);
         setEditName(item.name);
-        setEditCategory(item.category as any);
+        setEditCategory(item.category as 'pokebox' | 'etb' | 'booster' | 'sleeve' | 'tapis' | 'autre');
         setEditPrice(item.price.toString());
         setEditQuantity(item.quantity.toString());
         setShowEditModal(true);
@@ -315,52 +296,15 @@ export default function ItemsPage() {
     const closeEditModal = () => {
         setShowEditModal(false);
         setEditingItem(null);
-    };
-
-    // ========== EDIT ITEM ==========
-    const handleEditItem = async () => {
-        if (!editingItem || !editName || !editPrice || !editQuantity) {
-            alert('Veuillez remplir tous les champs');
-            return;
-        }
-
-        try {
-            const { error } = await supabase
-                .from('items')
-                .update({
-                    nom: editName,
-                    categorie: editCategory,
-                    prix_achat: parseFloat(editPrice),
-                    quantite: parseInt(editQuantity),
-                })
-                .eq('id', editingItem.id);
-
-            if (error) throw error;
-
-            const updatedItems = items.map(item =>
-                item.id === editingItem.id
-                    ? {
-                        ...item,
-                        name: editName,
-                        category: editCategory,
-                        price: parseFloat(editPrice),
-                        quantity: parseInt(editQuantity),
-                    }
-                    : item
-            );
-
-            setItems(updatedItems);
-            closeEditModal();
-            calculateTotalValue(updatedItems);
-        } catch (error) {
-            console.error('Erreur:', error);
-            alert('Erreur lors de la modification');
-        }
+        setEditName('');
+        setEditCategory('pokebox');
+        setEditPrice('');
+        setEditQuantity('');
     };
 
     // ========== FILTER & SORT ITEMS ==========
     const filteredAndSortedItems = () => {
-        let filtered = items;
+        let filtered = [...items];
 
         if (searchTerm) {
             filtered = filtered.filter(item =>
@@ -407,11 +351,11 @@ export default function ItemsPage() {
 
     // ========== FILTER & SORT VENTES ==========
     const filteredAndSortedVentes = () => {
-        let filtered = ventes;
+        let filtered = [...ventes];
 
         if (searchTermVentes) {
             filtered = filtered.filter(vente =>
-                vente.item_nom.toLowerCase().includes(searchTermVentes.toLowerCase())
+                vente.item_name.toLowerCase().includes(searchTermVentes.toLowerCase())
             );
         }
 
@@ -423,26 +367,18 @@ export default function ItemsPage() {
             let aValue: any;
             let bValue: any;
 
-            switch (sortByVentes) {
-                case 'date':
+            switch (sortOrderVentes) {
+                case 'asc':
                     aValue = new Date(a.created_at).getTime();
                     bValue = new Date(b.created_at).getTime();
                     break;
-                case 'prix':
-                    aValue = a.prix_vente;
-                    bValue = b.prix_vente;
-                    break;
-                case 'plateforme':
-                    aValue = a.plateforme.toLowerCase();
-                    bValue = b.plateforme.toLowerCase();
+                default:
+                    aValue = new Date(b.created_at).getTime();
+                    bValue = new Date(a.created_at).getTime();
                     break;
             }
 
-            if (sortOrderVentes === 'asc') {
-                return aValue > bValue ? 1 : -1;
-            } else {
-                return aValue < bValue ? 1 : -1;
-            }
+            return aValue > bValue ? 1 : -1;
         });
 
         return filtered;
@@ -526,19 +462,19 @@ export default function ItemsPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {activeTab === 'items' && (
                     <div>
-                        {/* ========== BUTTON AJOUTER ARTICLE ========== */}
+                        {/* ========== ADD BUTTON ========== */}
                         <div className="mb-6 flex justify-between items-center">
-                            <h2 className="text-xl font-bold text-gray-900">Mes articles</h2>
+                            <h2 className="text-2xl font-bold text-gray-900">Articles</h2>
                             <button
                                 onClick={() => setShowAddItemModal(true)}
-                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition flex items-center gap-2"
                             >
                                 <Plus size={20} />
                                 Ajouter un article
                             </button>
                         </div>
 
-                        {/* ========== FILTRES ========== */}
+                        {/* ========== FILTERS ========== */}
                         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                             <h3 className="text-lg font-semibold text-gray-900 mb-4">🔍 Filtres et tri</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -567,17 +503,16 @@ export default function ItemsPage() {
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
                                         <option value="all">Toutes</option>
-                                        <option value="cartes">Cartes</option>
-                                        <option value="display">Display</option>
-                                        <option value="coffret">Coffret</option>
+                                        <option value="pokebox">Pokébox</option>
                                         <option value="etb">ETB</option>
-                                        <option value="upc">UPC</option>
-                                        <option value="accessoire">Accessoire</option>
+                                        <option value="booster">Booster</option>
+                                        <option value="sleeve">Sleeve</option>
+                                        <option value="tapis">Tapis</option>
                                         <option value="autre">Autre</option>
                                     </select>
                                 </div>
 
-                                {/* Trier par */}
+                                {/* Tri */}
                                 <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                                         Trier par
@@ -604,43 +539,43 @@ export default function ItemsPage() {
                                         onChange={(e) => setSortOrder(e.target.value as SortOrder)}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="asc">Croissant</option>
                                         <option value="desc">Décroissant</option>
+                                        <option value="asc">Croissant</option>
                                     </select>
                                 </div>
                             </div>
                         </div>
 
-                        {/* ========== TABLE DESKTOP ========== */}
+                        {/* ========== ITEMS TABLE DESKTOP ========== */}
                         {displayedItems.length > 0 ? (
                             <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden">
                                 <table className="w-full">
-                                    <thead className="bg-gray-100 border-b">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
-                                            Nom
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                                            Article
                                         </th>
-                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                                             Catégorie
                                         </th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
                                             Prix
                                         </th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
                                             Quantité
                                         </th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
                                             Total
                                         </th>
-                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                                             Date
                                         </th>
-                                        <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-900">
                                             Actions
                                         </th>
                                     </tr>
                                     </thead>
-                                    <tbody className="divide-y">
+                                    <tbody className="divide-y divide-gray-200">
                                     {displayedItems.map((item) => {
                                         const price = item.price || 0;
                                         const quantity = item.quantity || 0;
@@ -652,20 +587,20 @@ export default function ItemsPage() {
                                                     {item.name}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                                                        {item.category}
-                                                    </span>
+                                                        <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+                                                            {item.category}
+                                                        </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-right text-gray-900 font-semibold">
+                                                <td className="px-6 py-4 text-right text-gray-900">
                                                     {price.toFixed(2)}€
                                                 </td>
-                                                <td className="px-6 py-4 text-right text-gray-900 font-semibold">
+                                                <td className="px-6 py-4 text-right text-gray-900">
                                                     {quantity}
                                                 </td>
-                                                <td className="px-6 py-4 text-right text-gray-900 font-bold">
+                                                <td className="px-6 py-4 text-right font-bold text-gray-900">
                                                     {total.toFixed(2)}€
                                                 </td>
-                                                <td className="px-6 py-4 text-gray-600">
+                                                <td className="px-6 py-4 text-sm text-gray-600">
                                                     {new Date(item.created_at).toLocaleDateString('fr-FR')}
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
@@ -702,7 +637,7 @@ export default function ItemsPage() {
                             </div>
                         )}
 
-                        {/* ========== CARDS MOBILE ========== */}
+                        {/* ========== ITEMS CARDS MOBILE ========== */}
                         <div className="md:hidden space-y-4">
                             {displayedItems.map((item) => (
                                 <div
@@ -746,19 +681,19 @@ export default function ItemsPage() {
                                             onClick={() => openEditModal(item)}
                                             className="flex-1 px-3 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition"
                                         >
-                                            ✏️ Modifier
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteItem(item.id)}
-                                            className="flex-1 px-3 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition"
-                                        >
-                                            🗑️ Supprimer
+                                            ✏️ Éditer
                                         </button>
                                         <button
                                             onClick={() => openVenteModal(item.id)}
                                             className="flex-1 px-3 py-2 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition"
                                         >
                                             💰 Vendre
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteItem(item.id)}
+                                            className="flex-1 px-3 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition"
+                                        >
+                                            🗑️ Supprimer
                                         </button>
                                     </div>
                                 </div>
@@ -771,13 +706,13 @@ export default function ItemsPage() {
                     <div>
                         {/* ========== TITRE VENTES ========== */}
                         <div className="mb-6">
-                            <h2 className="text-xl font-bold text-gray-900">Historique des ventes</h2>
+                            <h2 className="text-2xl font-bold text-gray-900">Historique des ventes</h2>
                         </div>
 
-                        {/* ========== FILTRES VENTES ========== */}
+                        {/* ========== VENTES FILTERS ========== */}
                         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                             <h3 className="text-lg font-semibold text-gray-900 mb-4">🔍 Filtres et tri</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {/* Recherche */}
                                 <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -804,25 +739,9 @@ export default function ItemsPage() {
                                     >
                                         <option value="all">Toutes</option>
                                         <option value="ebay">eBay</option>
+                                        <option value="amazon">Amazon</option>
                                         <option value="vinted">Vinted</option>
-                                        <option value="facebook">Facebook</option>
                                         <option value="autre">Autre</option>
-                                    </select>
-                                </div>
-
-                                {/* Trier par */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                        Trier par
-                                    </label>
-                                    <select
-                                        value={sortByVentes}
-                                        onChange={(e) => setSortByVentes(e.target.value as any)}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="date">Date</option>
-                                        <option value="prix">Prix</option>
-                                        <option value="plateforme">Plateforme</option>
                                     </select>
                                 </div>
 
@@ -836,65 +755,61 @@ export default function ItemsPage() {
                                         onChange={(e) => setSortOrderVentes(e.target.value as SortOrder)}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="asc">Croissant</option>
-                                        <option value="desc">Décroissant</option>
+                                        <option value="desc">Plus récentes</option>
+                                        <option value="asc">Plus anciennes</option>
                                     </select>
                                 </div>
                             </div>
                         </div>
 
-                        {/* ========== TABLE VENTES DESKTOP ========== */}
+                        {/* ========== VENTES TABLE DESKTOP ========== */}
                         {displayedVentes.length > 0 ? (
                             <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden">
                                 <table className="w-full">
-                                    <thead className="bg-gray-100 border-b">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                                             Article
                                         </th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">
-                                            Prix
+                                        <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
+                                            Prix Achat
                                         </th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
+                                            Prix Vente
+                                        </th>
+                                        <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
                                             Quantité
                                         </th>
-                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                                             Plateforme
                                         </th>
-                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
                                             Date
-                                        </th>
-                                        <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">
-                                            Livraison
                                         </th>
                                     </tr>
                                     </thead>
-                                    <tbody className="divide-y">
+                                    <tbody className="divide-y divide-gray-200">
                                     {displayedVentes.map((vente) => (
                                         <tr key={vente.id} className="hover:bg-gray-50 transition">
                                             <td className="px-6 py-4 font-medium text-gray-900">
-                                                {vente.item_nom}
+                                                {vente.item_name}
                                             </td>
-                                            <td className="px-6 py-4 text-right text-gray-900 font-semibold">
-                                                {vente.prix_vente.toFixed(2)}€
+                                            <td className="px-6 py-4 text-right text-gray-900">
+                                                {(vente.prix_achat || 0).toFixed(2)}€
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-gray-900">
+                                                {(vente.prix_vente || 0).toFixed(2)}€
                                             </td>
                                             <td className="px-6 py-4 text-right text-gray-900">
                                                 {vente.quantite_vendue}
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
-                                                    {vente.plateforme}
-                                                </span>
+                                                    <span className="inline-block px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
+                                                        {vente.plateforme}
+                                                    </span>
                                             </td>
-                                            <td className="px-6 py-4 text-gray-600">
-                                                {new Date(vente.created_at).toLocaleDateString('fr-FR')}
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                {vente.has_shipping ? (
-                                                    <span className="text-green-600 font-bold">✓ Oui</span>
-                                                ) : (
-                                                    <span className="text-gray-400">✗ Non</span>
-                                                )}
+                                            <td className="px-6 py-4 text-sm text-gray-600">
+                                                {new Date(vente.date_vente).toLocaleDateString('fr-FR')}
                                             </td>
                                         </tr>
                                     ))}
@@ -907,24 +822,30 @@ export default function ItemsPage() {
                             </div>
                         )}
 
-                        {/* ========== CARDS MOBILE VENTES ========== */}
+                        {/* ========== VENTES CARDS MOBILE ========== */}
                         <div className="md:hidden space-y-4">
                             {displayedVentes.map((vente) => (
                                 <div
                                     key={vente.id}
-                                    className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-green-600"
+                                    className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-purple-600"
                                 >
                                     <div className="flex justify-between items-start mb-3">
-                                        <h3 className="font-bold text-gray-900">{vente.item_nom}</h3>
+                                        <h3 className="font-bold text-gray-900">{vente.item_name}</h3>
                                         <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">
                                             {vente.plateforme}
                                         </span>
                                     </div>
-                                    <div className="space-y-2 mb-4">
+                                    <div className="space-y-2">
                                         <div className="flex justify-between">
-                                            <span className="text-gray-600">Prix:</span>
-                                            <span className="font-semibold text-gray-900">
-                                                {vente.prix_vente.toFixed(2)}€
+                                            <span className="text-gray-600">Prix Achat:</span>
+                                            <span className="text-gray-900">
+                                                {(vente.prix_achat || 0).toFixed(2)}€
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">Prix Vente:</span>
+                                            <span className="text-gray-900">
+                                                {(vente.prix_vente || 0).toFixed(2)}€
                                             </span>
                                         </div>
                                         <div className="flex justify-between">
@@ -936,27 +857,9 @@ export default function ItemsPage() {
                                         <div className="flex justify-between">
                                             <span className="text-gray-600">Date:</span>
                                             <span className="text-gray-900">
-                                                {new Date(vente.created_at).toLocaleDateString('fr-FR')}
+                                                {new Date(vente.date_vente).toLocaleDateString('fr-FR')}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-600">Livraison:</span>
-                                            <span className="font-semibold text-gray-900">
-                                                {vente.has_shipping ? '✓ Oui' : '✗ Non'}
-                                            </span>
-                                        </div>
-                                        {vente.has_shipping && (
-                                            <>
-                                                <div className="flex justify-between text-xs">
-                                                    <span className="text-gray-600">Transporteur:</span>
-                                                    <span className="text-gray-900">{vente.transporteur}</span>
-                                                </div>
-                                                <div className="flex justify-between text-xs">
-                                                    <span className="text-gray-600">N° Suivi:</span>
-                                                    <span className="text-gray-900">{vente.num_suivi}</span>
-                                                </div>
-                                            </>
-                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -981,7 +884,7 @@ export default function ItemsPage() {
                                     value={newItemName}
                                     onChange={(e) => setNewItemName(e.target.value)}
                                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Ex: Booster Pokémon"
+                                    placeholder="Ex: Pokébox"
                                 />
                             </div>
 
@@ -994,12 +897,11 @@ export default function ItemsPage() {
                                     onChange={(e) => setNewItemCategory(e.target.value as any)}
                                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
-                                    <option value="cartes">Cartes</option>
-                                    <option value="display">Display</option>
-                                    <option value="coffret">Coffret</option>
+                                    <option value="pokebox">Pokébox</option>
                                     <option value="etb">ETB</option>
-                                    <option value="upc">UPC</option>
-                                    <option value="accessoire">Accessoire</option>
+                                    <option value="booster">Booster</option>
+                                    <option value="sleeve">Sleeve</option>
+                                    <option value="tapis">Tapis</option>
                                     <option value="autre">Autre</option>
                                 </select>
                             </div>
@@ -1010,11 +912,11 @@ export default function ItemsPage() {
                                 </label>
                                 <input
                                     type="number"
-                                    step="0.01"
                                     value={newItemPrice}
                                     onChange={(e) => setNewItemPrice(e.target.value)}
                                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Ex: 15.99"
+                                    placeholder="0.00"
+                                    step="0.01"
                                 />
                             </div>
 
@@ -1024,10 +926,10 @@ export default function ItemsPage() {
                                 </label>
                                 <input
                                     type="number"
-                                    min="1"
                                     value={newItemQuantity}
                                     onChange={(e) => setNewItemQuantity(e.target.value)}
                                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="1"
                                 />
                             </div>
                         </div>
@@ -1050,11 +952,95 @@ export default function ItemsPage() {
                 </div>
             )}
 
+            {/* ========== MODAL EDIT ITEM ========== */}
+            {showEditModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-6">✏️ Modifier un article</h2>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-gray-700 font-bold mb-2">
+                                    Nom de l'article *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Nom de l'article"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-gray-700 font-bold mb-2">
+                                    Catégorie *
+                                </label>
+                                <select
+                                    value={editCategory}
+                                    onChange={(e) => setEditCategory(e.target.value as any)}
+                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="pokebox">Pokébox</option>
+                                    <option value="etb">ETB</option>
+                                    <option value="booster">Booster</option>
+                                    <option value="sleeve">Sleeve</option>
+                                    <option value="tapis">Tapis</option>
+                                    <option value="autre">Autre</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-gray-700 font-bold mb-2">
+                                    Prix d'achat (€) *
+                                </label>
+                                <input
+                                    type="number"
+                                    value={editPrice}
+                                    onChange={(e) => setEditPrice(e.target.value)}
+                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="0.00"
+                                    step="0.01"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-gray-700 font-bold mb-2">
+                                    Quantité *
+                                </label>
+                                <input
+                                    type="number"
+                                    value={editQuantity}
+                                    onChange={(e) => setEditQuantity(e.target.value)}
+                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="1"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={closeEditModal}
+                                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleEditItem}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
+                            >
+                                Modifier
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ========== MODAL VENTE ========== */}
             {showVenteModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-6">💰 Enregistrer une vente</h2>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-6">🛒 Enregistrer une vente</h2>
 
                         <div className="space-y-4">
                             <div>
@@ -1067,7 +1053,7 @@ export default function ItemsPage() {
                                     value={prixVente}
                                     onChange={(e) => setPrixVente(e.target.value)}
                                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                                    placeholder="Ex: 25.00"
+                                    placeholder="Ex: 49.99"
                                 />
                             </div>
 
@@ -1077,110 +1063,28 @@ export default function ItemsPage() {
                                 </label>
                                 <input
                                     type="number"
-                                    min="1"
                                     value={quantiteVendue}
                                     onChange={(e) => setQuantiteVendue(e.target.value)}
                                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                                    placeholder="1"
                                 />
                             </div>
 
                             <div>
                                 <label className="block text-gray-700 font-bold mb-2">
-                                    Plateforme *
+                                    Plateforme
                                 </label>
                                 <select
                                     value={plateforme}
-                                    onChange={(e) => setPlateforme(e.target.value)}
+                                    onChange={(e) => setPlateforme(e.target.value as any)}
                                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                                 >
                                     <option value="ebay">eBay</option>
+                                    <option value="amazon">Amazon</option>
                                     <option value="vinted">Vinted</option>
-                                    <option value="facebook">Facebook</option>
                                     <option value="autre">Autre</option>
                                 </select>
                             </div>
-
-                            {/* ========== CHECKBOX LIVRAISON ========== */}
-                            <div className="border-t pt-4 mt-4">
-                                <label className="flex items-center gap-3 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={hasShipping}
-                                        onChange={(e) => setHasShipping(e.target.checked)}
-                                        className="w-5 h-5 rounded cursor-pointer"
-                                    />
-                                    <span className="text-gray-700 font-semibold">📦 Ajouter infos livraison</span>
-                                </label>
-                            </div>
-
-                            {/* ========== SHIPPING INFO ========== */}
-                            {hasShipping && (
-                                <>
-                                    <div>
-                                        <label className="block text-gray-700 font-bold mb-2">
-                                            Prénom *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={prenom}
-                                            onChange={(e) => setPrenom(e.target.value)}
-                                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-700 font-bold mb-2">
-                                            Nom *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={nom}
-                                            onChange={(e) => setNom(e.target.value)}
-                                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-700 font-bold mb-2">
-                                            Adresse *
-                                        </label>
-                                        <textarea
-                                            value={adresse}
-                                            onChange={(e) => setAdresse(e.target.value)}
-                                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                                            placeholder="123 Rue de la Paix, 75000 Paris"
-                                            rows={3}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-700 font-bold mb-2">
-                                            Transporteur *
-                                        </label>
-                                        <select
-                                            value={transporteur}
-                                            onChange={(e) => setTransporteur(e.target.value as any)}
-                                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                                        >
-                                            <option value="chronopost">Chronopost</option>
-                                            <option value="colissimo">Colissimo</option>
-                                            <option value="mondial-relais">Mondial Relay</option>
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-700 font-bold mb-2">
-                                            Numéro de suivi *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={numSuivi}
-                                            onChange={(e) => setNumSuivi(e.target.value)}
-                                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                                        />
-                                    </div>
-                                </>
-                            )}
                         </div>
 
                         <div className="flex gap-3 mt-6">
@@ -1192,92 +1096,9 @@ export default function ItemsPage() {
                             </button>
                             <button
                                 onClick={handleAddVente}
-                                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition"
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition"
                             >
-                                Valider la vente
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ========== MODAL EDIT ========== */}
-            {showEditModal && editingItem && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-6">✏️ Modifier l'article</h2>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-gray-700 font-bold mb-2">
-                                    Nom de l'article
-                                </label>
-                                <input
-                                    type="text"
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-gray-700 font-bold mb-2">
-                                    Catégorie
-                                </label>
-                                <select
-                                    value={editCategory}
-                                    onChange={(e) => setEditCategory(e.target.value as any)}
-                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="cartes">Cartes</option>
-                                    <option value="display">Display</option>
-                                    <option value="coffret">Coffret</option>
-                                    <option value="etb">ETB</option>
-                                    <option value="upc">UPC</option>
-                                    <option value="accessoire">Accessoire</option>
-                                    <option value="autre">Autre</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-gray-700 font-bold mb-2">
-                                    Prix d'achat (€)
-                                </label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={editPrice}
-                                    onChange={(e) => setEditPrice(e.target.value)}
-                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-gray-700 font-bold mb-2">
-                                    Quantité
-                                </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    value={editQuantity}
-                                    onChange={(e) => setEditQuantity(e.target.value)}
-                                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 mt-6">
-                            <button
-                                onClick={closeEditModal}
-                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-bold hover:bg-gray-50 transition"
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                onClick={handleEditItem}
-                                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition"
-                            >
-                                Sauvegarder
+                                Enregistrer
                             </button>
                         </div>
                     </div>
