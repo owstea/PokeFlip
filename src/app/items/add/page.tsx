@@ -42,7 +42,7 @@ export default function AddItemPage() {
         setLoading(true);
 
         try {
-            const { data, error } = await supabase.from('items').insert([
+            const { error } = await supabase.from('items').insert([
                 {
                     user_id: userId,
                     nom: formData.name,
