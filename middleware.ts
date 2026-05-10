@@ -17,8 +17,8 @@ export async function middleware(request: NextRequest) {
                 getAll() {
                     return request.cookies.getAll();
                 },
-                setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value, options }) => {
+                setAll(cookiesToSet: any[]) {
+                    cookiesToSet.forEach(({ name, value, options }: any) => {
                         response.cookies.set(name, value, options);
                     });
                 },
@@ -30,18 +30,18 @@ export async function middleware(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser();
 
-    // Routes protégées
+    console.log('User in middleware:', user);
+
     const protectedRoutes = ['/items', '/items/add', '/dashboard'];
     const isProtectedRoute = protectedRoutes.some((route) =>
         request.nextUrl.pathname.startsWith(route)
     );
 
-    // Si pas d'utilisateur et route protégée → redirection vers login
     if (!user && isProtectedRoute) {
+        console.log('Redirecting to login - no user');
         return NextResponse.redirect(new URL('/auth/login', request.url));
     }
 
-    // Si utilisateur connecté et essaie d'accéder à /auth/login → redirection vers home
     if (user && request.nextUrl.pathname.startsWith('/auth/login')) {
         return NextResponse.redirect(new URL('/', request.url));
     }
